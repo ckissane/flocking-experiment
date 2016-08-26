@@ -1,0 +1,558 @@
+<html>
+
+    <head>
+        <script src="colors.js"></script>
+        <style>
+            html, body, canvas {
+                padding:0;
+                margin:0;
+            }
+            .controls {
+                position:absolute;
+                top:0px;
+                left:0px;
+                display:none;
+            }
+        </style>
+    </head>
+
+    <body>
+        <canvas id="c"></canvas>
+        <div class="controls"><span>Cohesion:</span>
+            <input id="cohesion" type="range" min="0" max="4" step="0.1" value="4">
+        </div>
+        <script>
+            var c = document.getElementById("c");
+            c.width = window.innerWidth;
+            c.height = window.innerHeight;
+            var w = c.width;
+            var h = c.height;
+            var grid = [];
+            var size =  w * h / 160000;
+            var range = 5 * size;
+            var cohesion = document.getElementById("cohesion").value;
+            grid = [];
+            for (var i = 0; i < Math.ceil(w / range) + 4; i++) {
+                grid[i] = [];
+                for (var j = 0; j < Math.ceil(h / range) + 4; j++) {
+                    grid[i][j] = [];
+                }
+            }
+
+            function resetGrid() {
+                grid = [];
+                for (var i = 0; i < Math.ceil(w / range) + 4; i++) {
+                    grid[i] = [];
+                    for (var j = 0; j < Math.ceil(h / range) + 4; j++) {
+                        grid[i][j] = [];
+                    }
+                }
+            }
+             //resetGrid();
+
+            function sqr(x) {
+                return x * x
+            }
+            var rotateVector = function(vec, ang) {
+                ang = ang * (Math.PI / 180);
+                var cos = Math.cos(ang);
+                var sin = Math.sin(ang);
+                return {
+                    x: Math.round(10000 * (vec.x * cos - vec.y * sin)) / 10000,
+                    y: Math.round(10000 * (vec.x * sin + vec.y * cos)) / 10000
+                }
+            };
+
+            function dist2(v, w) {
+                return sqr(v.x - w.x) + sqr(v.y - w.y)
+            }
+
+            function closestPointOnSegment(p, v, w) {
+                var l2 = dist2(v, w);
+                if (l2 == 0) return dist2(p, v);
+                var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+                t = Math.max(0, Math.min(1, t));
+                return {
+                    x: v.x + t * (w.x - v.x),
+                    y: v.y + t * (w.y - v.y)
+                };
+            }
+
+
+
+
+
+            var ctx = c.getContext("2d");
+            var starlings = [];
+
+            function fillGrid() {
+                for (var i = 0; i < starlings.length; i++) {
+                    starlings[i].x = Math.max(Math.min(w - range/2, starlings[i].x), range/2);
+                    starlings[i].y = Math.max(Math.min(h - range/2, starlings[i].y), range/2);
+                    starlings[i].gx = Math.floor(starlings[i].x / range) + 2;
+                    starlings[i].gy = Math.floor(starlings[i].y / range) + 2;
+                    //console.log(i, starlings[i].gx, starlings[i].gy);
+                    grid[starlings[i].gx][starlings[i].gy].push(i);
+                }
+            }
+            var obstacles = [];
+            var mouse = {
+                x: w / 2,
+                y: h / 2
+            }; //mouse acts like scary predator
+            /*obstacles.push({
+                    x1: 0 - range,
+                    y1: 0 - range,
+                    x2: w + range,
+                    y2: 0 - range
+                });
+            obstacles.push({
+                    x1: 0 - range,
+                    y1: h + range,
+                    x2: w + range,
+                    y2: h + range
+                });
+            obstacles.push({
+                    x1: 0 - range,
+                    y1: 0 - range,
+                    x2: 0 - range,
+                    y2: h + range
+                });
+            obstacles.push({
+                    x1: w + range,
+                    y1: 0 - range,
+                    x2: w + range,
+                    y2: h + range
+                });*/
+            obstacles.push({
+                    x1: 0 - 0,
+                    y1: 0 - 0,
+                    x2: w + 0,
+                    y2: 0 - 0
+                });
+            obstacles.push({
+                    x1: 0 - 0,
+                    y1: h + 0,
+                    x2: w + 0,
+                    y2: h + 0
+                });
+            obstacles.push({
+                    x1: 0 - 0,
+                    y1: 0 - 0,
+                    x2: 0 - 0,
+                    y2: h + 0
+                });
+            obstacles.push({
+                    x1: w + 0,
+                    y1: 0 - 0,
+                    x2: w + 0,
+                    y2: h + 0
+                });
+            /*obstacles.push({
+                    x1: w/2,
+                    y1: h/4,
+                    x2: w/2,
+                    y2: h/2
+                });*/
+            var scroll = {
+                x: 0,
+                y: 0
+            };
+
+            for (var i = 0; i < 800; i++) {
+                starlings[i] = {
+                    x: (Math.random() - 0.5) * (w / 2-range) + w / 2,
+                    y: (Math.random() - 0.5) * (h / 2-range) + h / 2,
+                    vx: Math.random() * 10 - 5,
+                    vy: Math.random() * 10 - 5,
+                    avx: 0,
+                    avy: 1
+                };
+            }
+            for (var i = 0; i < starlings.length; i++) {
+                starlings[i].ax =starlings[i].x;
+                starlings[i].ay =starlings[i].y;
+            }
+            var birdColors = randomColor({
+                    luminosity: 'dark',
+                    hue: 'random',
+                    count: 6
+                });
+            birdColors=["rgb(211, 61, 61)","rgb(166, 166, 34)","rgb(39, 175, 39)","hsl(180, 65%, 41%)","hsl(240, 73%, 58%)","hsl(300, 59%, 51%)"];
+            function dist(star, star2) {
+                return Math.sqrt(Math.pow(star.x - star2.x, 2) + Math.pow(star.y - star2.y, 2));
+            }
+             //have you read how starling flocks move?
+             //so i think each bird trys to match its closest 7 neighbors in direction and velocity
+             //and will fly away from predators if it sees one
+
+            function tick() {
+                var flockCenter = {
+                    x: 0,
+                    y: 0
+                };
+                cohesion = document.getElementById("cohesion").value;
+                //ctx.clearRect(0, 0, w, h);
+                var avePos = {
+                    x: 0,
+                    y: 0
+                };
+                for (var i = 0; i < starlings.length; i++) {
+                    starlings[i].neighbors = [];
+                    starlings[i].cNeighbors = [];
+                    starlings[i].fneighbors = [];
+                    flockCenter.x += starlings[i].x / starlings.length;
+                    flockCenter.y += starlings[i].y / starlings.length;
+                }
+                resetGrid();
+                fillGrid();
+                for (var i = 0; i < starlings.length; i++) {
+                    for (var gridQX = Math.max(starlings[i].gx - 1, 0); gridQX <= Math.min(starlings[i].gx + 1, grid.length - 1); gridQX++) {
+                        for (var gridQY = Math.max(starlings[i].gy - 1, 0); gridQY <= Math.min(starlings[i].gy + 1, grid[0].length - 1); gridQY++) {
+                            for (var m = 0; m < grid[gridQX][gridQY].length; m++) {
+                                var j = grid[gridQX][gridQY][m];
+                                var nDist = dist(starlings[i], starlings[j]);
+                                var nDir = Math.atan2(starlings[j].y - starlings[i].y, starlings[j].x - starlings[i].x);
+                                var mDir = Math.atan2(starlings[i].vy, starlings[i].vx);
+                                if (nDist < range && (Math.min(Math.abs((mDir - nDir) % (Math.PI * 2)), Math.PI * 2 - Math.abs((mDir - nDir) % (Math.PI * 2))) < Math.PI)) {
+                                    //console.log(starlings[i], starlings[j]);
+                                    starlings[i].neighbors.push({
+                                            p: j,
+                                            d: nDist,
+                                            vx: starlings[j].vx,
+                                            vy: starlings[j].vy
+                                        });
+
+                                    /*starlings[j].neighbors.push({
+                                    p: i,
+                                    d: nDist,
+                                    vx: starlings[i].vx,
+                                    vy: starlings[i].vy
+                                });*/
+                                }
+                            }
+
+                        }
+                    }
+                }
+                for (var i = 0; i < starlings.length; i++) {
+                    //console.log(starlings[i].neighbors.length);
+                    var newvx = 0;
+                    var newvy = 0;
+
+                    var aveVel = {
+                        x: 0,
+                        y: 0
+                    };
+                    var avePos = {
+                        x: 0,
+                        y: 0
+                    };
+                    var aveRepel = {
+                        x: 0,
+                        y: 0
+                    };
+                    var dir = Math.atan2(starlings[i].vy, starlings[i].vx);
+                    var repels = 0;
+                    var attracts = 0;
+                    var vels=0;
+                    // console.log("bird #"+i);
+                    //console.log(starlings[i].neighbors.length+" neighbors");
+                    //if(starlings[i].neighbors.length>0){
+                    //console.log(starlings[i].neighbors[0]);
+                    //}
+                    for (var g = 0; g < starlings[i].neighbors.length; g++) {
+                        var neb = starlings[starlings[i].neighbors[g].p];
+                        var starDist = Math.max(dist(starlings[i], neb), 1);
+                        //console.log(starDist,neb.x,neb.y,starlings[i].neighbors[g].vx,starlings[i].neighbors[g].vy);
+                        //var nfallOff = 2/ (Math.pow(starDist - size, 3) + 1);
+                        //var fallOff = 6 / (Math.pow(starDist, 2) + 1);
+                         if(starlings[i].neighbors[g].p%birdColors.length==i%birdColors.length){
+                        aveVel.x += neb.vx;
+                        aveVel.y += neb.vy;
+                        vels++;
+                         }
+                        if (starDist < size * 2) {
+                            aveRepel.x += -(neb.x - starlings[i].x) / starDist * (size * 2 - starDist) / 4; //*(size*1-starDist)/2;
+                            aveRepel.y += -(neb.y - starlings[i].y) / starDist * (size * 2 - starDist) / 4; //*(size*1-starDist)/2;
+                            repels++;
+                        } else {
+                            avePos.x += (neb.x - starlings[i].x) / starDist * (starDist - size * 1); ///starDist*(size*0.5-starDist);
+                            avePos.y += (neb.y - starlings[i].y) / starDist * (starDist - size * 1); ///starDist*(size*0.5-starDist);
+                            attracts++;
+                            /*if(starlings[i].neighbors[g].p%birdColors.length==i%birdColors.length){
+                                avePos.x += (neb.x - starlings[i].x) / starDist * (starDist - size * 1); ///starDist*(size*0.5-starDist);
+                            avePos.y += (neb.y - starlings[i].y) / starDist * (starDist - size * 1); ///starDist*(size*0.5-starDist);
+                            attracts++;
+                           }else if((starlings[i].neighbors[g].p+1)%birdColors.length==i%birdColors.length){
+                                aveRepel.x += -(neb.x - starlings[i].x) / starDist * (range - starDist) / 4; //*(size*1-starDist)/2;
+                            aveRepel.y += -(neb.y - starlings[i].y) / starDist * (range - starDist) / 4; //*(size*1-starDist)/2;
+                            repels++;
+                           }else if((starlings[i].neighbors[g].p)%birdColors.length==(i+1)%birdColors.length){
+                               avePos.x += (neb.x - starlings[i].x);// / starDist * (starDist ); ///starDist*(size*0.5-starDist);
+                            avePos.y += (neb.y - starlings[i].y);// / starDist * (starDist ); ///starDist*(size*0.5-starDist);
+                            attracts++;
+                           }else{
+                               avePos.x += (neb.x - starlings[i].x) / starDist * (starDist - size * 1); ///starDist*(size*0.5-starDist);
+                            avePos.y += (neb.y - starlings[i].y) / starDist * (starDist - size * 1); ///starDist*(size*0.5-starDist);
+                            attracts++;
+                           }*/
+                        }
+                        //newvx += starlings[i].neighbors[g].vx * fallOff - (starlings[i].x - neb.x) * (starDist > 20 ? 1 : -1) / starDist * nfallOff;
+                        //newvy += starlings[i].neighbors[g].vy * fallOff - (starlings[i].y - neb.y) * (starDist > 20 ? 1 : -1) / starDist * nfallOff;
+                    }
+                    //var aveDir = Math.atan2(aveVel.y, aveVel.x);
+                    //var posDir = Math.atan2(avePos.y, avePos.x);
+                    //var bestDir = Math.atan2(avePos.y, avePos.x); //(aveDir/2+posDir/2)%(2*Math.PI);
+
+
+
+                    var totObsVel = {
+                        x: 0,
+                        y: 0
+                    };
+                    var totObs = 0;
+                    var isObs = false;
+                    var closestObs = 100;
+                    for (var j = 0; j < obstacles.length; j++) {
+                        var oPoint = closestPointOnSegment(starlings[i], {
+                                x: obstacles[j].x1,
+                                y: obstacles[j].y1
+                            }, {
+                                x: obstacles[j].x2,
+                                y: obstacles[j].y2
+                            });
+                        var oDist = Math.sqrt(Math.pow(starlings[i].x - oPoint.x, 2) + Math.pow(starlings[i].y - oPoint.y, 2));
+                        if (oDist < range) {
+                           // ctx.beginPath();
+                           // ctx.fillStyle = "red";
+                           // ctx.arc(oPoint.x, oPoint.y, 2, 0, Math.PI * 2);
+                           // ctx.fill();
+                            isObs = true;
+                            //if(){
+                            closestObs = Math.min(closestObs, oDist);
+                            totObsVel.x += (starlings[i].x - oPoint.x); /// (oDist+10)/ (oDist+10)*20;
+                            totObsVel.y += (starlings[i].y - oPoint.y); // / (oDist+10)/ (oDist+10)*20;
+                            //}
+                            //newvx=newvx/preMag*10;
+                            //newvx=newvx/preMag*10;
+                        }
+                    }
+                    //dir = Math.atan2(newvy, newvx);
+                    //obstacle Dir
+                    newvx = starlings[i].vx / 2;
+                    newvy = starlings[i].vy / 2;
+                    newvx += aveVel.x / Math.max(vels, 1) / 3;
+                    newvy += aveVel.y / Math.max(vels, 1) / 3; //Math.sin(aveDir);
+                    if (repels > 0) {
+                        newvx += aveRepel.x * 2; //Math.cos(aveDir);
+                        newvy += aveRepel.y * 2; //Math.sin(aveDir);
+                    }
+                    if (attracts > 0) {
+                        newvx += avePos.x / attracts / 40 * cohesion; //Math.cos(posDir)*2;
+                        newvy += avePos.y / attracts / 40 * cohesion; // Math.sin(posDir)*2;
+                    }
+                    var mouseDist = Math.sqrt(Math.pow(mouse.x - starlings[i].x, 2) + Math.pow(mouse.y - starlings[i].y, 2));
+                    if (mouseDist < range) {
+                        newvx -= (mouse.x - starlings[i].x) / 16 / mouseDist * 16; //Math.cos(posDir)*2;
+                        newvy -= (mouse.y - starlings[i].y) / 16 / mouseDist * 16; // Math.sin(posDir)*2;
+                    }
+                    var flockCenterDist = Math.sqrt(Math.pow(flockCenter.x - starlings[i].x, 2) + Math.pow(flockCenter.y - starlings[i].y, 2));
+                    if (flockCenterDist < range*5) {
+                        newvx += (flockCenter.x - starlings[i].x) / 16 / flockCenterDist; //Math.cos(posDir)*2;
+                        newvy += (flockCenter.y - starlings[i].y) / 16 / flockCenterDist; // Math.sin(posDir)*2;
+                    }
+
+                    mag = Math.sqrt(Math.pow(newvx, 2) + Math.pow(newvy, 2));
+                    if (mag < 0.01) {
+                        newvx = Math.random() - 0.5;
+                        newvy = Math.random() - 0.5;
+                        mag = Math.sqrt(Math.pow(newvx, 2) + Math.pow(newvy, 2));
+                    }
+                    dir = Math.atan2(newvy, newvx);
+                    var randDir = Math.random() * 0.2 - 0.1;
+                    newvx = Math.cos(randDir + dir) * Math.min(Math.max(mag, size), size*2);
+                    newvy = Math.sin(randDir + dir) * Math.min(Math.max(mag, size), size*2);
+                    if (isObs) {
+                        var obsDir = Math.atan2(totObsVel.y, totObsVel.x);
+                        var maxDir = Math.max(obsDir, dir);
+                        var minDir = Math.min(obsDir, dir);
+                        var obsDist = Math.sqrt(Math.pow(totObsVel.x, 2) + Math.pow(totObsVel.y, 2));
+
+                        var totObsVel = {
+                            x: 0,
+                            y: 0
+                        };
+                        var totObs = 0;
+                        for (var j = 0; j < obstacles.length; j++) {
+                            var oPoint = closestPointOnSegment({
+                                    x: starlings[i].x + newvx,
+                                    y: starlings[i].y + newvy
+                                }, {
+                                    x: obstacles[j].x1,
+                                    y: obstacles[j].y1
+                                }, {
+                                    x: obstacles[j].x2,
+                                    y: obstacles[j].y2
+                                });
+                            var oDist = Math.sqrt(Math.pow(starlings[i].x + newvx - oPoint.x, 2) + Math.pow(starlings[i].y + newvy - oPoint.y, 2));
+                            if (oDist < range) {
+                                totObsVel.x += (starlings[i].x + newvx - oPoint.x) / oDist * (range - oDist); /// (oDist+10)/ (oDist+10)*20;
+                                totObsVel.y += (starlings[i].y + newvy - oPoint.y) / oDist * (range - oDist); // / (oDist+10)/ (oDist+10)*20;
+                                var preMag = Math.sqrt(Math.pow(newvx, 2) + Math.pow(newvy, 2));
+                                //newvx=newvx/preMag*10;
+                                //newvx=newvx/preMag*10;
+                            }
+                        }
+
+
+                        newvx += totObsVel.x;
+                        newvy += totObsVel.y;
+                    }
+                    starlings[i].nvx = newvx;
+                    starlings[i].nvy = newvy;
+                }
+                for (var i = 0; i < starlings.length; i++) {
+                    starlings[i].vx = starlings[i].nvx;
+                    starlings[i].vy = starlings[i].nvy;
+                    starlings[i].avx = (starlings[i].avx*15+starlings[i].vx)/16;//animation vx and vy for smother turning
+                    starlings[i].avy = (starlings[i].avy*15+starlings[i].vy)/16;
+                    starlings[i].ax = (starlings[i].ax*15+starlings[i].x)/16;//animation x and y for smother move
+                    starlings[i].ay = (starlings[i].ay*15+starlings[i].y)/16;
+                    starlings[i].x += starlings[i].vx;
+                    starlings[i].y += starlings[i].vy;
+                    
+                }
+                ctx.beginPath();
+
+                ctx.fillStyle = "rgba(255,255,255,0.25)";
+                ctx.fillRect(0, 0, w, h);
+                ctx.fill();
+                for (var i = 0; i < starlings.length; i++) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = "black";
+                    ctx.fillStyle = birdColors[i%birdColors.length]; //"black";
+                    // ctx.translate(starlings[i].x - scroll.x, starlings[i].y - scroll.y);
+                    //ctx.rotate(Math.atan2(starlings[i].vy,starlings[i].vx));
+                    var rotAngle = Math.atan2(starlings[i].avy, starlings[i].avx) / Math.PI * 180;
+                    var drawPoints = [{
+                            x: 10,
+                            y: 0
+                        }, {
+                            x: -10,
+                            y: 5
+                        }, {
+                            x: -5,
+                            y: 0
+                        }, {
+                            x: -10,
+                            y: -5
+                        }
+                    ];
+                    var firstPoint = rotateVector({
+                            x: drawPoints[0].x * size / 10,
+                            y: drawPoints[0].y * size / 10
+                        }, rotAngle);
+                    ctx.moveTo(firstPoint.x + starlings[i].ax - scroll.x, firstPoint.y + starlings[i].ay - scroll.y);
+                    for (var lP = 1; lP < drawPoints.length; lP++) {
+                        var nowPoint = rotateVector({
+                                x: drawPoints[lP].x * size / 10,
+                                y: drawPoints[lP].y * size / 10
+                            }, rotAngle);
+                        ctx.lineTo(nowPoint.x + starlings[i].ax - scroll.x, nowPoint.y + starlings[i].ay - scroll.y);
+                    }
+                    ctx.lineTo(firstPoint.x + starlings[i].ax - scroll.x, firstPoint.y + starlings[i].ay - scroll.y);
+                    //ctx.arc(0+starlings[i].x - scroll.x,0+starlings[i].y - scroll.y, size/2, 0, Math.PI * 2);
+                    //ctx.stroke();
+                    ctx.fill();
+                    //ctx.rotate(-Math.atan2(starlings[i].vy,starlings[i].vx));
+                    //ctx.setTransform(1,0,0,1,0,0);
+                    //ctx.translate(-(starlings[i].x - scroll.x),-( starlings[i].y - scroll.y));
+                    //ctx.beginPath();
+                    //ctx.strokeStyle = "black";
+                    //ctx.moveTo(starlings[i].x - scroll.x, starlings[i].y - scroll.y);
+                    //var mag = Math.sqrt(Math.pow(starlings[i].vx, 2) + Math.pow(starlings[i].vy, 2));
+                    //ctx.lineTo(starlings[i].x - scroll.x + starlings[i].vx / mag * 5, starlings[i].y - scroll.y + starlings[i].vy / mag * 5);
+                    // ctx.stroke();
+                    avePos.x += starlings[i].x / starlings.length;
+                    avePos.y += starlings[i].y / starlings.length;
+                }
+                for (var j = 0; j < obstacles.length; j++) {
+                    //ctx.beginPath();
+                    //ctx.strokeStyle = "red";
+                    //ctx.moveTo(obstacles[j].x1 - scroll.x, obstacles[j].y1 - scroll.y);
+
+                    //ctx.lineTo(obstacles[j].x2 - scroll.x, obstacles[j].y2 - scroll.y);
+                    //ctx.stroke();
+                }
+                //scroll.x = (scroll.x * 4 + avePos.x - w / 2) / 5;
+                //scroll.y = (scroll.y * 4 + avePos.y - h / 2) / 5;
+                //ctx.beginPath();//mouse render
+                //ctx.fillStyle = "red";
+                //ctx.arc(mouse.x, mouse.y, 2, 0, Math.PI * 2);
+                //ctx.fill();
+            }
+
+            window.setInterval(tick, 20);
+            window.onmousemove = function(e) {
+                mouse.x = e.clientX;
+                mouse.y = e.clientY;
+            };
+            window.onmousedown = function(e) {
+                mouse.x = e.clientX;
+                mouse.y = e.clientY;
+                
+               var newStar = {
+                    x: mouse.x+1,
+                    y: mouse.y+1,
+                    vx: Math.random() * 10 - 5,
+                    vy: Math.random() * 10 - 5,
+                    avx: 0,
+                    avy: 1
+                };
+            
+            
+                newStar.ax =newStar.x;
+                newStar.ay =newStar.y;
+                newStar.x = Math.max(Math.min(w - range/2, newStar.x), range/2);
+                    newStar.y = Math.max(Math.min(h - range/2, newStar.y), range/2);
+                    newStar.gx = Math.floor(newStar.x / range) + 2;
+                    newStar.gy = Math.floor(newStar.y / range) + 2;
+            starlings[starlings.length]=newStar;
+            };
+            window.onresize = function(e) {
+               c.width = window.innerWidth;
+            c.height = window.innerHeight;
+            w = c.width;
+            h = c.height;
+            obstacles = [];
+            
+            obstacles.push({
+                    x1: 0 - 0,
+                    y1: 0 - 0,
+                    x2: w + 0,
+                    y2: 0 - 0
+                });
+            obstacles.push({
+                    x1: 0 - 0,
+                    y1: h + 0,
+                    x2: w + 0,
+                    y2: h + 0
+                });
+            obstacles.push({
+                    x1: 0 - 0,
+                    y1: 0 - 0,
+                    x2: 0 - 0,
+                    y2: h + 0
+                });
+            obstacles.push({
+                    x1: w + 0,
+                    y1: 0 - 0,
+                    x2: w + 0,
+                    y2: h + 0
+                });
+            };
+        </script>
+    </body>
+
+</html>
